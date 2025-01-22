@@ -1,0 +1,138 @@
+---
+title: "KHANDLE Codebook"
+subtitle: "Multiphasic Health Checkup (MHC) Summary"
+# author: "Juliet Yixuan Zhou & Natalie Gradwohl"
+date: "01/10/2025"
+output:
+  pdf_document:
+    toc: false
+  word_document:
+    toc: false
+  html_document:
+    toc: false
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+```{r message=FALSE}
+library(tidyverse)
+library(haven)
+library(epiDisplay)
+library(readxl)
+library(lubridate)
+```
+
+```{r load dataset}
+path_to_box <- "C:/Users/josephfong/Box/"
+
+# update to the most recent data release
+
+n_transfer <- 16
+folder_date <- "2025Jan10"
+file_date <- str_remove_all(as_date(folder_date), "-")
+
+path_to_folder <- paste0(
+  "KHANDLE_coded_data/Raw_data_tables/All_Wave/transfer", n_transfer, 
+  "_", folder_date, "/"
+)
+
+dat <- read_sas(
+  paste0(path_to_box, path_to_folder, "khandle_all_waves_", file_date, ".sas7bdat"))
+
+dat_mhc <- dat %>% filter(COHORT == 1) %>% 
+  dplyr::select(STUDYID, starts_with("mhc"))
+```
+
+```{r load data dictionary, message=FALSE, warning=FALSE}
+# load the data dictionary for variable name and variable description
+dictionary <- read_excel(
+  paste0(path_to_box, path_to_folder, 
+         "KHANDLE_All_Waves_", file_date, "_Data_Dictionary.xlsx"), 
+  .name_repair = "universal", 
+  sheet = "Data Description") %>% 
+  dplyr::select(
+    all_of(c("PHI", "Variable.Name", "Variable.Label", 
+             "Cycle.1.Format.Values", "Cycle.2.Format.Values"))
+    # Note: choose the right format values to match the cohort/cycle
+  ) %>% 
+  rename("var_name" = "Variable.Name", 
+         "var_desc" = "Variable.Label", 
+         "values"  = "Cycle.2.Format.Values")
+```
+
+\pagebreak
+
+Note:
+
+For each variable, the following information is pulled from the dictionary:
+
+*	Variable name
+*	Variable description
+*	Possible values and coding
+
+A frequency table is generated to accompany most of the variables, with the 
+following columns:
+
+*	Frequency
+*	%(NA+) and cum.%(NA+): relative and cumulative frequencies calculated from 
+  including the NA’s in the total
+*	%(NA-) and cum.%(NA-): relative and cumulative frequencies calculated from 
+  excluding the NA’s from the total
+
+If a variable is quantitative in nature, a histogram is used to replace the 
+frequency table, accompanied by the number of NA’s. 
+
+\pagebreak
+
+```{r codebook function}
+codebook <- function(data, var, categorical = TRUE, print.values = TRUE) {
+  var_description <- dictionary %>% 
+    filter(var_name == var) %>% 
+    # dplyr::select(var_desc)
+    pull(var_desc)
+  # var_description <- as.character(var_description)
+  var_values <- dictionary %>% 
+    filter(var_name == var) %>% 
+    # dplyr::select(values)
+    pull(values)
+  # var_values <- as.character(var_values)
+  # print out information to be included in the codebook
+  
+  print(str_c(var, ": ", var_description))
+  if (!is.na(var_values) & print.values) {print(var_values)}
+  
+  if(categorical) {
+    # print the frequency table
+    # with absolute, relative and cumulative frequencies
+    print(str_c("Frequency table of ", var))
+    tab1(data[var], graph = FALSE, cum.percent = TRUE) %>% print()
+  } else {
+    x <- data[var] %>% as_vector()
+    na_count <- sum(is.na(x))
+    na_perc <- round(na_count/length(x), digits = 3)
+    print(str_c("NA Frequency: ", na_count, " (", 100*na_perc, "%)"))
+    try(hist(x, main = NULL, xlab = paste(var)))
+  }
+  
+  cat("\n\n")
+}
+```
+
+
+```{r mhc}
+for (var in str_subset(
+  names(dat_mhc)[-1], 
+  "BMI|CHOL|DIASTOLIC|SYSTOLIC|EXAM_AGE|GLUCOSE|FASTING|HEIGHT|WEIGHT")) {
+  codebook(dat_mhc, var, categorical = FALSE)
+}
+
+for (var in str_subset(
+  names(dat_mhc)[-1], 
+ "BMI|CHOL|DIASTOLIC|SYSTOLIC|EXAM_AGE|GLUCOSE|FASTING|HEIGHT|WEIGHT", 
+  negate = TRUE)) {
+  codebook(dat_mhc, var)
+}
+```
